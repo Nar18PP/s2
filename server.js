@@ -20,7 +20,7 @@ app.get('/api/products', (req, res) => {
       { id: 10, name: 'ໄຂ່ຕົ້ມ', heart: 2359, price: 59, img:"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUPZ8Hv38DtbZs2gqhTLkKT-MgbmHTHpdHVw&s" },
       { id: 11, name: 'ພິດຊ່າ', heart: 587, price: 85, img:"https://images.pexels.com/photos/2147491/pexels-photo-2147491.jpeg?cs=srgb&dl=pexels-vince-2147491.jpg&fm=jpg" },
     ];
-    for (let i = 12; i <= 200; i++) {
+    for (let i = 12; i <= 50; i++) {
       products.push({ id: i, name: `Product ${i}`, heart: Math.floor(Math.random() * 1000), price: Math.floor(Math.random() * 100) + 1, img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUPZ8Hv38DtbZs2gqhTLkKT-MgbmHTHpdHVw&s" });
     }
     res.json(products);
