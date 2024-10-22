@@ -193,7 +193,7 @@ io.on("connection", (socket) => {
       socket.emit('countdown', countuser[socket.id])
       
       if (countuser[socket.id] <= 0) {
-        socket.emit('countdown', 'Send')
+        io.emit('countdown', 'Send')
         clearInterval(intervel1[socket.id]);
         intervel1[socket.id] = null;
 
