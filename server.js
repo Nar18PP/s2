@@ -14,7 +14,7 @@ app.use(cookieParser());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "https://", // อนุญาตเฉพาะต้นทางนี้
+    origin: "http://localhost:5173", // อนุญาตเฉพาะต้นทางนี้
     methods: ["GET", "POST"],
     credentials: true,
   },
