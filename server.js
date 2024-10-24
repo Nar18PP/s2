@@ -1,209 +1,222 @@
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-import cookieParser from "cookie-parser";
-import cors from "cors";
-import dotenv from "dotenv";
-import nodemailer from "nodemailer";
+import React, { useState, useEffect, useRef } from "react";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import io from "socket.io-client";
+import Cookies from "js-cookie";
+import Input from "@mui/material/Input";
+import InputLabel from "@mui/material/InputLabel";
+import InputAdornment from "@mui/material/InputAdornment";
+import FormControl from "@mui/material/FormControl";
+import Alert from "@mui/material/Alert";
+import "../style/sign.css";
 
-// Middleware เพื่อให้ Express รู้จัก JSONd
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(cookieParser());
 
-const server = http.createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: "*", // อนุญาตเฉพาะต้นทางนี้
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
 
-dotenv.config();
-
-// ฟังก์ชันส่งอีเมล
-const sendEmail = async (email, otp) => {
-  const mailOptions = {
-    from: "Foraling <foraling37@gmail.com>",
-    to: email,
-    subject: "ยืนยัน OTP ของคุณ",
-    text: `รหัส OTP ของคุณคือ: ${otp}`,
+function Signup() {
+  const [step, setStep] = useState(0);
+  const [count, setCount] = useState("Send");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const onChange1 = (event) => {
+    setEmail(event.target.value);
+    
   };
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`อีเมลถูกส่งไปที่ ${email}`);
-  } catch (error) {
-    console.error("Error sending email:", error);
-    throw new Error("Error sending email");
-  }
-};
+  const onChange2 = (event) => {
+    setOtp(event.target.value);
+  };
+  const onChange3 = (event) => {
+    setFirstName(event.target.value);
+  };
+  const onChange4 = (event) => {
+    setLastName(event.target.value);
+  };
 
-// Send OTP
-app.post("/api/send-email", async (req, res) => {
-  const { inputEmail } = req.body;
-  const randomOtp = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
+  const onSend = () => {
+    socket.current.emit('SendOtp', email)
+  };
+  const onNext = () => {
+    socket.current.emit('CheckOtp', email, otp)
+  };
 
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    const [result] = await connection.execute(
-      "SELECT * FROM user WHERE user_emailtest = ? AND user_email = ?",
-      [inputEmail, inputEmail]
-    );
 
-    if (result.length > 0) {
-      return res.status(400).send("ມີຜູ້ໃຊ້ອີເມວນີ້ແລ້ວ");
-    }
-    if (!validateEmail(inputEmail)) {
-      return res.status(400).send("ອີເມວບໍ່ຖືກຕ້ອງ");
-    }
-    await connection.execute(
-      "INSERT INTO user (user_emailtest, user_otp) VALUES (?, ?)",
-      [inputEmail, randomOtp]
-    );
-    await sendEmail(inputEmail, randomOtp);
+  const socket = useRef(null)
+  useEffect(() => {
+    socket.current = io("http://localhost:3000");
 
-    res.status(200).send("OTP ถูกส่งแล้ว");
-  } catch (error) {
-    console.error("Error sending email or saving to database:", error);
-    res.status(500).send("Error sending email or saving to database");
-  } finally {
-    if (connection) connection.release();
-  }
-});
+    socket.current.on("connect", () => {
+      const socketId = Cookies.get("SocketId");
+      if (!socketId) {
+        let randomSocketId =
+          Math.floor(Math.random() * (9999999999 - 1000000000 + 1)) + 10000000;
+        Cookies.set("SocketId", randomSocketId, { expires: 1 / 2 });
+        socket.current.emit('sendSocketId', randomSocketId); // ส่ง randomSocketId ไปยังเซิร์ฟเวอร์
+        console.log(randomSocketId); // แสดงค่า randomSocketId ในคอนโซล
+      } else {
+        console.log(socketId); // แสดงค่า socketId ที่มีอยู่ในคุกกี้
+        socket.current.emit('sendSocketId', socketId); // ส่ง randomSocketId ไปยังเซิร์ฟเวอร์
+      }
 
-// สร้าง API Route
-app.get("/", (req, res) => {
-  res.send("Welcome to my API!");
-});
-
-app.get("/api/products", (req, res) => {
-  const products = [
-    {
-      id: 1,
-      name: "ຜັດໄກ່23",
-      heart: 957,
-      price: 67,
-      img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTzb0IFD9i42VcxKBRLdtzQsQHEKrXWJuqBEw&s",
-    },
-    {
-      id: 2,
-      name: "ເບີເກີ່",
-      heart: 1520,
-      price: 38,
-      img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQBZL-_s71i1m6RLSIIfxfg0D9rR91Z8MLLbQ&s",
-    },
-    {
-      id: 3,
-      name: "ຍຳທະເລ",
-      heart: 541,
-      price: 163,
-      img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUPZ8Hv38DtbZs2gqhTLkKT-MgbmHTHpdHVw&s",
-    },
-    {
-      id: 4,
-      name: "ຍຳສະລັດ",
-      heart: 5971,
-      price: 29,
-      img: "https://images.pexels.com/photos/2097090/pexels-photo-2097090.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 5,
-      name: "ສະມູດຕີ່",
-      heart: 1672,
-      price: 54,
-      img: "https://images.pexels.com/photos/1092730/pexels-photo-1092730.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 6,
-      name: "ເຄັກຊອກໂກແລັດ",
-      heart: 541,
-      price: 210,
-      img: "https://images.pexels.com/photos/291528/pexels-photo-291528.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 7,
-      name: "ຊີ້ນໝາ",
-      heart: 662,
-      price: 56,
-      img: "https://images.pexels.com/photos/361184/asparagus-steak-veal-steak-veal-361184.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 8,
-      name: "ຊູຊິ",
-      heart: 25563,
-      price: 156,
-      img: "https://images.pexels.com/photos/357756/pexels-photo-357756.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 9,
-      name: "ຊີ້ນງົວ",
-      heart: 954,
-      price: 84,
-      img: "https://images.pexels.com/photos/793785/pexels-photo-793785.jpeg?auto=compress&cs=tinysrgb&w=600https://images.pexels.com/photos/769290/pexels-photo-769290.jpeg?auto=compress&cs=tinysrgb&w=600",
-    },
-    {
-      id: 10,
-      name: "ໄຂ່ຕົ້ມ",
-      heart: 2359,
-      price: 59,
-      img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUPZ8Hv38DtbZs2gqhTLkKT-MgbmHTHpdHVw&s",
-    },
-    {
-      id: 11,
-      name: "ພິດຊ່າ",
-      heart: 587,
-      price: 85,
-      img: "https://images.pexels.com/photos/2147491/pexels-photo-2147491.jpeg?cs=srgb&dl=pexels-vince-2147491.jpg&fm=jpg",
-    },
-  ];
-  for (let i = 12; i <= 50; i++) {
-    products.push({
-      id: i,
-      name: `Product555 ${i}`,
-      heart: Math.floor(Math.random() * 1000),
-      price: Math.floor(Math.random() * 100) + 1,
-      img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRUPZ8Hv38DtbZs2gqhTLkKT-MgbmHTHpdHVw&s",
+      socket.current.on('countSend',(countSend)=>{
+        setCount(countSend);
+      })
     });
-  }
-  res.json(products);
-});
 
+    document.body.style.backgroundColor = "var(--background-color)";
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
+  }, []);
 
-let intervel1 = {};
-let countuser = {};
-io.on("connection", (socket) => {
-  console.log(socket.id);
-
-  socket.on("test1", () => {
-
-    if (intervel1[socket.id]) {
+  useEffect(() => {
+    let interval1;
+    // แปลง count เป็น number
+    if(interval1){
       return;
     }
-    if(!countuser[socket.id]){
-      countuser[socket.id] = 10;
+    const numericCount = Number(count);
+    // เริ่มนับถอยหลังถ้าค่า count เป็นตัวเลขและมากกว่า 0
+    if (numericCount > 0) {
+       interval1 = setInterval(() => {
+        setCount((prev) => {
+          const prevNum = Number(prev); // แปลง prev เป็น number ก่อนลดค่า
+          return prevNum > 0 ? prevNum - 1 : "Send"; // ลดค่าทุกวินาที
+        });
+      }, 1000);
+  
+      return () => clearInterval(interval1); // ทำความสะอาด interval เมื่อ component ถูก unmount
+    } else {
+      setCount("Send");
+      clearInterval(interval1)
     }
+  }, [count]); // มีการอัปเดตทุกครั้งที่ count เปลี่ยนแปลง
 
+  return (
+    <>
+      {/* <Alert
+        style={
+          alert1 != "" && statusAlert1 == "Success" ? {} : { display: "none" }
+        }
+        severity="success"
+      >
+        {alert1}
+      </Alert>
+      <Alert
+        style={
+          alert1 != "" && statusAlert1 == "Error" ? {} : { display: "none" }
+        }
+        severity="error"
+      >
+        {alert1}
+      </Alert> */}
+      <div className="sign">
+        <div className="container1">
+          <div className="krp1">
+            <div className="t-top">Sign Up</div>
+            <div className="input" style={step == 0 ? {} : { display: "none" }}>
+              <FormControl sx={{ m: 0, width: "100%" }} variant="standard">
+                <InputLabel sx={{ fontSize: "1rem" }} htmlFor="email">
+                  Email
+                </InputLabel>
+                <Input
+                  sx={{ paddingRight: "58px" }}
+                  autoComplete="email"
+                  id="email"
+                  type="text"
+                  value={email}
+                  onChange={onChange1}
+                  endAdornment={
+                    <InputAdornment position="end"></InputAdornment>
+                  }
+                />
+                <div className="btn">
+                  <button onClick={onSend}>{count}</button>
+                </div>
+              </FormControl>
+              <FormControl sx={{ m: 0, width: "100%" }} variant="standard">
+                <InputLabel sx={{ fontSize: "1rem" }} htmlFor="otp">
+                  OTP
+                </InputLabel>
+                <Input
+                  autoComplete="text"
+                  id="otp"
+                  type="text"
+                  value={otp}
+                  onChange={onChange2}
+                  endAdornment={
+                    <InputAdornment position="end"></InputAdornment>
+                  }
+                />
+              </FormControl>
+            </div>
+            <div className="input" style={step == 1 ? {} : { display: "none" }}>
+              <FormControl sx={{ m: 0, width: "100%" }} variant="standard">
+                <InputLabel sx={{ fontSize: "1rem" }} htmlFor="firstName">
+                  FirstName:
+                </InputLabel>
+                <Input
+                  sx={{ paddingRight: "58px" }}
+                  autoComplete="firstName"
+                  id="firstName"
+                  type="text"
+                  value={firstName}
+                  onChange={onChange3}
+                  endAdornment={
+                    <InputAdornment position="end"></InputAdornment>
+                  }
+                />
+              </FormControl>
+              <FormControl sx={{ m: 0, width: "100%" }} variant="standard">
+                <InputLabel sx={{ fontSize: "1rem" }} htmlFor="lastName">
+                  LastName:
+                </InputLabel>
+                <Input
+                  autoComplete="lastName"
+                  id="lastName"
+                  type="text"
+                  value={lastName}
+                  onChange={onChange4}
+                  endAdornment={
+                    <InputAdornment position="end"></InputAdornment>
+                  }
+                />
+              </FormControl>
+            </div>
+            <div
+              className="input"
+              style={step == 2 ? {} : { display: "none" }}
+            ></div>
+            <div className="input" style={{ display: "none" }}></div>
+            <div className="krp2">
+              <div className="btn">
+                <Stack
+                  direction="row"
+                  sx={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <Button
+                    variant="outlined"
+                    sx={{ height: "36px", width: "120px" }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="contained"
+                    sx={{ height: "36px", width: "120px" }}
+                    onClick={onNext}
+                  >
+                    Next
+                  </Button>
+                </Stack>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
-    intervel1[socket.id] = setInterval(() => {
-      countuser[socket.id] -= 1;
-
-      socket.emit('countdown', countuser[socket.id])
-      
-      if (countuser[socket.id] <= 0) {
-        io.emit('countdown', 'Send')
-        clearInterval(intervel1[socket.id]);
-        intervel1[socket.id] = null;
-
-      }
-    }, 1000);
-  });
-});
-
-// Start the server
-const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+export default Signup;
