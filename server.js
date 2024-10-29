@@ -6,7 +6,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import mysql from "mysql2";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 // Middleware เพื่อให้ Express รู้จัก JSONd
 const app = express();
