@@ -1,15 +1,18 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import cookieParser from "cookie-parser";
 import cors from "cors";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import mysql from "mysql2";
+import bcrypt from "bcrypt";
 
 // Middleware เพื่อให้ Express รู้จัก JSONd
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(cookieParser());
 app.get("/set-cookie", (req, res) => {
   // สร้างคุกกี้ 'name' มีค่า 'value' และหมดอายุใน 1 วัน
   res.cookie("name", "value", { maxAge: 24 * 60 * 60 * 1000 }); // 1 วัน (มิลลิวินาที)
@@ -19,12 +22,9 @@ app.get("/set-cookie", (req, res) => {
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "*", // อนุญาตเฉพาะต้นทางนี้
-    methods: ["GET", "POST"],
-    credentials: true,
+    origin: "*",
   },
 });
-
 dotenv.config();
 
 // ตั้งค่าการเชื่อมต่อ MySQL
@@ -49,9 +49,49 @@ const validateEmail = (email) => {
   return regex.test(email);
 };
 
+// ฟังก์ชันสำหรับแฮชรหัสผ่าน
+async function hashPassword(password) {
+  const saltRounds = 12; // จำนวนรอบในการสร้าง salt (ค่าแนะนำคือ 10 ขึ้นไป)
+  const hashedPassword = await bcrypt.hash(password, saltRounds);
+  return hashedPassword;
+}
+// ฟังก์ชันสำหรับตรวจสอบรหัสผ่าน
+async function comparePassword(inputPassword, hashedPassword) {
+  const match = await bcrypt.compare(inputPassword, hashedPassword);
+  return match; // จะคืนค่าเป็น true หากตรงกัน และ false หากไม่ตรงกัน
+}
+
+let inter1 = {};
 let interval1 = {};
-let countuser = {};
-let person = {};
+let countUser1 = {};
+
+const insertSql = (tableName, columns, values) => {
+  const columnsStr = columns.join(", "); // รวมชื่อคอลัมน์เป็นสตริง
+  const valuesStr = values.join(", "); // จัดรูปแบบและรวมค่าต่าง ๆ เป็นสตริงพร้อมฟอร์แมต
+
+  const sql = `INSERT INTO ${tableName} (${columnsStr}) VALUES (${valuesStr});`;
+  return sql;
+};
+const selectSql = (tbname, columns, wheres) => {
+  const column = columns.join(", ");
+  const where = wheres.join(", ");
+  const sql = `SELECT ${column} FROM ${tbname} WHERE ${where}`;
+  return sql;
+};
+const updateSql = (tbname, columns, values, wheres) => {
+  const column = columns.join(", ");
+  const value = values.join(", ");
+  const where = wheres.join(", ");
+
+  const sql = `UPDATE ${tbname} SET ${column} = ${value} WHERE ${where}`;
+  return sql;
+};
+const deleteSql = (tbname, wheres) => {
+  const where = wheres.join(", ");
+
+  const sql = `DELETE FROM ${tbname} WHERE ${where}`;
+  return sql;
+};
 
 // กำหนดค่า transporter สำหรับ nodemailer
 const transporter = nodemailer.createTransport({
@@ -62,84 +102,91 @@ const transporter = nodemailer.createTransport({
   },
 });
 // ฟังก์ชันส่งอีเมล
-const sendEmail = async (email, newSocketId) => {
+const sendEmail = async (email, socket, status) => {
   const otp = Math.floor(Math.random() * (999999 - 100000 + 1)) + 100000;
-  const mailOptions = {
+
+  const mailOptions1 = {
     from: `Foraling <${process.env.EMAIL_USER}>`,
     to: email,
-    subject: "ยืนยัน OTP ของคุณ",
-    text: `รหัส OTP ของคุณคือ: ${otp}`,
+    subject: `ຢືນຢັນ OTP ຂອງທ່ານ`,
+    text: `ລະຫັດ OTP ຂອງທ່ານຄື: ${otp}`,
+  };
+  const mailOptions2 = {
+    from: `Foraling <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `ຢືນຢັນ OTP ຂອງທ່ານສຳລັບປ່ຽນລະຫັດຜ່ານ`,
+    text: `ລະຫັດ OTP ຂອງທ່ານຄື: ${otp}`,
   };
   try {
-    insertmail(email, otp, newSocketId);
-    await transporter.sendMail(mailOptions);
-  } catch (error) {
-    console.error("Error sending email:", error);
-    throw new Error("Error sending email");
-  }
-};
-
-const insertmail = async (email, otp, newSocketId) => {
-  person[newSocketId] = { email, otp };
-
-  const sql = "INSERT INTO user (user_email, user_otp) VALUES (?, ?)";
-
-  try {
-    await new Promise((resolve, reject) => {
-      conn.query(
-        sql,
-        [person[newSocketId].email, person[newSocketId].otp],
-        (err, result) => {
-          if (err) {
-            return reject(err); // ส่งกลับ error
-          }
-          resolve(result); // ส่งกลับผลลัพธ์
+    if (status === "sendOtpRegister") {
+      await transporter.sendMail(mailOptions1);
+      socket.emit("showAlert", `ສົ່ງລະຫັດ OTP ໄປທີ່ ${email}`, "success");
+      countdown1(email, socket);
+      socket.emit("sendMailed", email);
+      addOtp(email, otp, socket);
+      socket.emit("setBtnSend", false);
+    } else if (status === "sendOtpResetPwd") {
+      await transporter.sendMail(mailOptions2);
+      socket.emit("showAlert", `ສົ່ງລະຫັດ OTP ໄປທີ່ ${email}`, "success");
+      countdown1(email, socket);
+      socket.emit("sendMailed", email);
+      const sql = updateSql("user", ["user_otp"], ["?"], ["user_email = ?"]);
+      conn.query(sql, [otp, email], (err, sult) => {
+        if (err) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
         }
-      );
-    });
-
-    console.log("Email and OTP inserted successfully");
-  } catch (error) {
-    console.error("Error inserting email and OTP:", error);
+      });
+      socket.emit("setBtnSend", false);
+    }
+  } catch (err) {
+    socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+    socket.emit("setBtnSend", false);
   }
 };
 
-const deletemail = async (email) => {
-  const sql = "delete from user where user_email = ?";
-  await new Promise((resolve, reject) => {
-    conn.query(sql, [email], (err, result) => {
-      if (err) {
-        return reject(err);
-      }
-      resolve(result);
-    });
-  });
-};
-
-const countSend = (socket, newSocketId, email) => {
-  if (interval1[newSocketId]) {
+const countdown1 = (email, socket) => {
+  if (interval1[email]) {
     return;
   }
-  if (!interval1[newSocketId]) {
-    countuser[newSocketId] = countuser[newSocketId] || 10;
-  }
+  countUser1[email] = 60;
 
-  interval1[newSocketId] = setInterval(() => {
-    countuser[newSocketId] -= 1;
-    console.log(countuser);
-    socket.emit("countSend", countuser[newSocketId]);
-    if (countuser[newSocketId] <= 0) {
-      socket.emit("countSend", "Send");
-      delete person[newSocketId];
-      deletemail(email);
-      if (interval1[newSocketId]) {
-        clearInterval(interval1[newSocketId]);
-        interval1[newSocketId] = null;
-      }
-      delete interval1[newSocketId]; // ลบ entry จาก interval
-      delete countuser[newSocketId]; // ลบ entry จาก countuser
+  interval1[email] = setInterval(() => {
+    countUser1[email] -= 1;
+    console.log(countUser1);
+    socket.emit("countSendOtp", countUser1[email]);
+    if (countUser1[email] <= 0) {
+      socket.emit("countSendOtp", "Send");
+      delOtp(email, socket);
+      const sql = updateSql("user", ["user_otp"], ["?"], ["user_email = ?"]);
+      conn.query(sql, ["", email], (err, sult) => {
+        if (err) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        }
+      });
+      clearInterval(interval1[email]);
+      interval1[email] = null;
+      delete interval1[email];
+      delete countUser1[email];
     }
   }, 1000);
+};
+
+const addOtp = (email, otp, socket) => {
+  const sql = "INSERT INTO user (user_email, user_otp) values(?, ?)";
+  conn.query(sql, [email, otp], (err, result) => {
+    if (err) {
+      socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+    }
+  });
+};
+const delOtp = (email, socket) => {
+  const sql = "DELETE FROM user WHERE user_email = ? AND user_fname IS NULL";
+  conn.query(sql, [email], (err, result) => {
+    if (err) {
+      socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+    } else if (result) {
+    }
+  });
 };
 
 app.get("/api/products", (req, res) => {
@@ -226,33 +273,309 @@ app.get("/api/products", (req, res) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("sendSocketId", (newSocketId) => {
-    console.log("User On Connection", newSocketId);
-    // ส่งค่าตัวนับเวลาที่เหลือไปยังผู้ใช้
-    if (countuser[newSocketId]) {
-      socket.emit("countSend", countuser[newSocketId]);
-    }
+  console.log(socket.id);
 
-    socket.on("SendOtp", (email) => {
-      if (!validateEmail(email)) {
-        return;
+  socket.on("sendOtp", (email, status) => {
+    if (!email) {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນກ່ອນ`, "error");
+      return;
+    }
+    if (!validateEmail(email)) {
+      socket.emit("showAlert", `ອີເມວບໍ່ຖືກຕ້ອງ`, "error");
+      return;
+    }
+    if (status === "sendOtpRegister") {
+      const sql = selectSql("user", ["user_email"], ["user_email = ?"]);
+      conn.query(sql, [email], (err, result) => {
+        if (result.length >= 1) {
+          socket.emit("showAlert", `ມີຜູ້ໃຊ້ອີເມວນີ້ແລ້ວ`, "error");
+          socket.emit("setBtnSend", false);
+          return;
+        }
+        socket.emit("setBtnSend", true);
+        sendEmail(email, socket, status);
+      });
+    } else if (status === "sendOtpResetPwd") {
+      const sql = selectSql(
+        "user",
+        ["user_email, user_fname"],
+        ["user_email = ? AND user_fname IS NOT NULL"]
+      );
+      conn.query(sql, [email], (err, sult) => {
+        if (err) {
+          socket.emit("setBtnSend", false);
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        }
+        if (sult.length >= 1) {
+          socket.emit("setBtnSend", true);
+          sendEmail(email, socket, status);
+        } else {
+          socket.emit("setBtnSend", false);
+          socket.emit("showAlert", `ອີເມວບໍ່ຖືກຕ້ອງ`, "error");
+        }
+      });
+    }
+  });
+
+  socket.on("requestCountSendOtp1", (email) => {
+    if (countUser1[email]) {
+      if (inter1[email]) {
+        clearInterval(inter1[email]);
+        inter1[email] = null;
+        delete inter1[email];
       }
 
-      const sql = `SELECT user_email from user where user_email = ?`;
-      conn.query(sql, [email], (err, result) => {
-        if (result.length > 0) {
-          console.log("have");
-          return;
+      inter1[email] = setInterval(() => {
+        socket.emit("countSendOtp", countUser1[email]);
+        if (countUser1[email] <= 1) {
+          setTimeout(() => {
+            socket.emit("countSendOtp1", "Send");
+            delOtp(email, socket);
+          }, 1000);
+
+          clearInterval(inter1[email]);
+          inter1[email] = null;
+          delete inter1[email];
+        }
+      }, 200);
+    }
+  });
+  socket.on("checkOtp", (email, otp) => {
+    if (!email || !otp) {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນໃຫ້ຄົບ`, "error");
+      return;
+    }
+    const sql =
+      "SELECT user_email FROM user WHERE user_email = ? AND user_otp = ?";
+    conn.query(sql, [email, otp], (err, result) => {
+      if (err) {
+        if (err) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        }
+      }
+      if (result.length >= 1) {
+        socket.emit("checkOtped");
+      } else {
+        socket.emit("showAlert", `ລະຫັດ OTP ບໍ່ຖືກຕ້ອງ`, "error");
+      }
+    });
+  });
+  socket.on("inputUsername", (username, age) => {
+    if (username && age) {
+      if (username.length >= 3) {
+        const sql = "SELECT user_username FROM user WHERE user_username = ?";
+        conn.query(sql, [username], (err, result) => {
+          if (err) {
+            socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+          }
+          if (result.length >= 1) {
+            socket.emit("showAlert", `ມີຜູ້ໃຊ້ຊື່ນີ້ແລ້ວ`, "error");
+          } else {
+            socket.emit("inputUsernamed");
+          }
+        });
+      } else {
+        socket.emit("showAlert", `Username ຕ້ອງມີ 3 ຕົວຂື້ນໄປ`, "error");
+      }
+    } else {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນໃຫ້ຄົບ`, "error");
+    }
+  });
+  socket.on("inputName", (fname, lname) => {
+    if (fname && lname) {
+      if (fname.length >= 3 && lname.length >= 3) {
+        socket.emit("inputNamed");
+      } else {
+        socket.emit("showAlert", `ຕ້ອງມີ 3 ຕົວຂື້ນໄປ`, "error");
+      }
+    } else {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນໃຫ້ຄົບ`, "error");
+    }
+  });
+  socket.on(
+    "lastStep",
+    (password1, password2, email, firstName, lastName, username, age) => {
+      if (password1.length >= 6) {
+        if (password1 === password2) {
+          const sql = selectSql(
+            "user",
+            ["*"],
+            ["user_email = ? AND user_fname IS NOT NULL"]
+          );
+          conn.query(sql, [email], (err, result) => {
+            if (err) {
+              socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+            }
+            if (result.length >= 1) {
+              socket.emit("showAlert", `ມີຜູ້ໃຊ້ອີເມວແລ້ວ`, "error");
+            } else {
+              const sql = selectSql("user", ["*"], [" user_username = ?"]);
+              conn.query(sql, [username], (err, result) => {
+                if (err) {
+                  socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+                }
+                if (result.length >= 1) {
+                  socket.emit("showAlert", `ມີຜູ້ໃຊ້ Username ແລ້ວ`, "error");
+                } else {
+                  const sql = insertSql(
+                    "user",
+                    [
+                      "user_fname",
+                      "user_lname",
+                      "user_username",
+                      "user_age",
+                      "user_email",
+                      "user_password",
+                    ],
+                    ["?", "?", "?", "?", "?", "?"]
+                  );
+                  hashPassword(password1).then((hashedPassword) => {
+                    conn.query(
+                      sql,
+                      [
+                        firstName,
+                        lastName,
+                        username,
+                        age,
+                        email,
+                        hashedPassword,
+                      ],
+                      (err, result) => {
+                        if (err) {
+                          console.log(err);
+                          socket.emit(
+                            "showAlert",
+                            `ມີຂໍ້ຜິດພາດເກີດຂື້ນ${err}`,
+                            "error"
+                          );
+                        }
+                        if (result) {
+                          socket.emit("showAlert", `ລົງທະບຽນສຳເລັດ`, "success");
+                          socket.emit("setDisBtn", true);
+                          if (interval1[email]) {
+                            delOtp(email, socket);
+                            clearInterval(interval1[email]);
+                            interval1[email] = null;
+                            delete countUser1[email];
+                            delete interval1[email];
+                          }
+                          if (inter1[email]) {
+                            clearInterval(inter1[email]);
+                            inter1[email] = null;
+                            delete inter1[email];
+                          }
+                          setTimeout(() => {
+                            socket.emit("signUped");
+                            socket.emit("setDisBtn", false);
+                          }, 3000);
+                        }
+                      }
+                    );
+                  });
+                }
+              });
+            }
+          });
         } else {
-          sendEmail(email, newSocketId);
-          countSend(socket, newSocketId, email);
-          return;
+          socket.emit("showAlert", `ລະຫັດຜ່ານບໍ່ຄືກັນ`, "error");
+        }
+      } else {
+        socket.emit("showAlert", `ລະຫັດຜ່ານຕ້ອງມີ 6 ຕົວຂື້ນໄປ`, "error");
+      }
+    }
+  );
+  socket.on("newPassword", (email, password1, password2) => {
+    if (!password1 || !password2) {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນໃຫ້ຄົບ`, "error");
+      return;
+    }
+    if (password1.length < 6) {
+      socket.emit("showAlert", `ລະຫັດຜ່ານຕ້ອງມີ 6 ຕົວຂື້ນໄປ`, "error");
+      return;
+    }
+    if (password1 !== password2) {
+      socket.emit("showAlert", `ລະຫັດຜ່ານບໍ່ຄືກັນ`, "error");
+      return;
+    }
+    const sql = updateSql("user", ["user_password"], ["?"], ["user_email = ?"]);
+    hashPassword(password1).then((hashedPassword) => {
+      conn.query(sql, [hashedPassword, email], (e, s) => {
+        if (e) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        } else if (s) {
+          socket.emit("showAlert", `ປ່ຽນລະຫັດຜ່ານສຳເລັດແລ້ວ`, "success");
+          socket.emit("setDisBtn", true);
+          if (interval1[email]) {
+            clearInterval(interval1[email]);
+            interval1[email] = null;
+            delete countUser1[email];
+            delete interval1[email];
+          }
+          if (inter1[email]) {
+            clearInterval(inter1[email]);
+            inter1[email] = null;
+            delete inter1[email];
+          }
+          setTimeout(() => {
+            socket.emit("setDisBtn", false);
+            socket.emit("changePwded");
+          }, 2000);
         }
       });
     });
-    socket.on("CheckOtp", (email, otp) => {
-      console.log(person);
-    });
+  });
+  socket.on("onSignIn", (email, password) => {
+    if (!email) {
+      socket.emit("showAlert", `ປ້ອນຂໍ້ມູນກ່ອນ`, "error");
+      return;
+    }
+    if (validateEmail(email)) {
+      const sql = "SELECT user_password FROM user WHERE user_email = ?";
+      conn.query(sql, [email], (err, sult) => {
+        if (err) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        }
+        if (sult.length >= 1) {
+          const hashedPassword = sult[0].user_password;
+          comparePassword(password, hashedPassword).then((isMatch) => {
+            if (isMatch) {
+              socket.emit("showAlert", `ເຂົ້າສູ່ລະບົບສຳເລັດແລ້ວ`, "success");
+              socket.emit('setDisBtn', true);
+              setTimeout(() => {
+                socket.emit('setDisBtn', false);
+                socket.emit('signined');
+              }, 2000);
+            } else {
+              socket.emit("showAlert", `ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ`, "error");
+            }
+          });
+        }
+      });
+      return;
+    } else {
+      const sql = "SELECT user_password FROM user WHERE user_username = ?";
+      conn.query(sql, [email], (err, sult) => {
+        if (err) {
+          socket.emit("showAlert", `ມີຂໍ້ຜິດພາດເກີດຂື້ນ`, "error");
+        }
+        if (sult.length >= 1) {
+          const hashedPassword = sult[0].user_password;
+          comparePassword(password, hashedPassword).then((isMatch) => {
+            if (isMatch) {
+              socket.emit("showAlert", `ເຂົ້າສູ່ລະບົບສຳເລັດແລ້ວ`, "success");
+              socket.emit('setDisBtn', true);
+              setTimeout(() => {
+                socket.emit('setDisBtn', false);
+                socket.emit('signined');
+              }, 2000);
+            } else {
+              socket.emit("showAlert", `ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ`, "error");
+            }
+          });
+        }
+      });
+      return;
+    }
   });
   socket.on("disconnect", () => {
     console.log("User disconected", socket.id); // แสดงข้อความเมื่อผู้ใช้ตัดการเชื่อมต่อ
