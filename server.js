@@ -44,9 +44,9 @@ io.on("connection", (socket) => {
   // เมื่อได้รับข้อมูลจากมือถือ
   socket.on("scanBarcode", (barcode) => {
     if (products[barcode]) {
-      socket.emit("productData", products[barcode]);
+      io.emit("productData", products[barcode]);
     } else {
-      socket.emit("productData", { message: "ไม่พบสินค้า" });
+      io.emit("productData", { message: "ไม่พบสินค้า" });
     }
   });
 
