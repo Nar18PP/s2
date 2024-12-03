@@ -17,7 +17,7 @@ app.use(bodyParser.json());
 // Mock ฐานข้อมูล
 const products = {
   "123456789012": { name: "นมวัวแดง 1 ลิตร", price: 40 },
-  "8851473000057": { name: "IYAFIN", price: 20,000 },
+  "8851473000057": { name: "IYAFIN", price: '20,000' },
 };
 
 // Endpoint สำหรับตรวจสอบข้อมูลสินค้า
