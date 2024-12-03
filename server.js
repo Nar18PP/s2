@@ -6,7 +6,13 @@ import bodyParser from "body-parser";
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // สามารถกำหนดแหล่งที่มาที่อนุญาตให้เข้าถึงได้
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  }
+});
 
 // ตั้งค่า CORS
 app.use(cors());
